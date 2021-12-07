@@ -111,7 +111,7 @@ if __name__ == "__main__":
             break
         posts.append(post)
 
-    for post in _posts[::-1]:
+    for post in posts[::-1]:
         if post["image"]:
             if len(post["images"]) == 1:
                 resp = bot.send_photo(post["image"], format_post(post))
