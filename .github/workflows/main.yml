@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  schedule:
+    # fire every 3 hours daily from 4am to 7pm UTC
+    - cron: "0 4,7,10,13,16,19 * * *"
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+    
+      - name: "Install requirements"
+        run: |
+          pip install -r requirements.txt
+      
+      - name: "Run main.py"
+        run: python3 main.py
+        env:
+          TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
+          TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
+          c_user: "${{ secrets.C_USER }}"
+          datr: "${{ secrets.DATR }}"
+          fr: "${{ secrets.FR }}"
+          sb: "${{ secrets.SB }}"
+          xs: "${{ secrets.XS }}"
+          GROUP_ID: "${{ secrets.GROUP_ID }}"
+      
