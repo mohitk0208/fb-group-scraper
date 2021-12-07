@@ -96,7 +96,7 @@ if __name__ == "__main__":
         - datetime.timedelta(hours=int(getenv("TIME_OFFSET", 3)), minutes=2)
     ).timestamp()
 
-    facebook_scraper.enable_logging()
+    # facebook_scraper.enable_logging()
     try:
         _posts = facebook_scraper.get_posts(
             group=getenv("GROUP_ID"), cookies=cookies, options={"progress": True}
@@ -114,16 +114,46 @@ if __name__ == "__main__":
     for post in _posts[::-1]:
         if post["image"]:
             if len(post["images"]) == 1:
-                print(bot.send_photo(post["image"], format_post(post)))
+                resp = bot.send_photo(post["image"], format_post(post))
+                print(
+                    {
+                        "result": resp["result"],
+                        "message_id": resp.get("result", {}).get("message_id"),
+                    }
+                )
             else:
                 media_entries = [
                     {"type": "photo", "media": image} for image in post["images"]
                 ]
                 if post["video"]:
                     media_entries.append({"type": "video", "media": post["video"]})
-                print(bot.send_media_group(media_entries))
-                print(bot.send_message(format_post(post)))
+                resp = bot.send_media_group(media_entries)
+                print(
+                    {
+                        "result": resp["result"],
+                        "message_id": resp.get("result", {}).get("message_id"),
+                    }
+                )
+                resp = bot.send_message(format_post(post))
+                print(
+                    {
+                        "result": resp["result"],
+                        "message_id": resp.get("result", {}).get("message_id"),
+                    }
+                )
         elif post["video"]:
-            print(bot.send_video(post["video"], format_post(post)))
+            resp = bot.send_video(post["video"], format_post(post))
+            print(
+                {
+                    "result": resp["result"],
+                    "message_id": resp.get("result", {}).get("message_id"),
+                }
+            )
         else:
-            print(bot.send_message(format_post(post)))
+            resp = bot.send_message(format_post(post))
+            print(
+                {
+                    "result": resp["result"],
+                    "message_id": resp.get("result", {}).get("message_id"),
+                }
+            )
