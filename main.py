@@ -92,7 +92,7 @@ if __name__ == "__main__":
     )
 
     time_offset = (
-        datetime.datetime.now()
+        datetime.datetime.utcnow()
         - datetime.timedelta(hours=int(getenv("TIME_OFFSET", 3)), minutes=2)
     ).timestamp()
 
