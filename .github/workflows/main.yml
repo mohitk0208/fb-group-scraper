@@ -2,8 +2,7 @@ name: CI
 
 on:
   schedule:
-    # fire every 3 hours daily from 4am to 7pm UTC
-    - cron: "0 4,7,10,13,16,19 * * *"
+    - cron: "0 0-16 * * *"
 
 jobs:
   fetch:
