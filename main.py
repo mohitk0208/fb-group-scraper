@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import datetime
-import re
 from os import getenv
 
 import requests
@@ -105,55 +104,43 @@ if __name__ == "__main__":
         bot.send_message("Login failed. Someone stole your cookies.")
         exit(1)
 
+    try:
+        with open("session.txt", "r") as f:
+            last_post_id = f.read().strip()
+            if last_post_id == "None":
+                raise TypeError("last_post_id was none")
+    except (FileNotFoundError, TypeError) as e:
+        print(e)
+        last_post_id = None
+
     posts = []
     for post in _posts:
-        if post["timestamp"] < time_offset:
+        if last_post_id and last_post_id == str(post["post_id"]):
             break
         posts.append(post)
 
     for post in posts[::-1]:
-        if post["image"]:
-            if len(post["images"]) == 1:
-                resp = bot.send_photo(post["image"], format_post(post))
-                print(
-                    {
-                        "result": resp["result"],
-                        "message_id": resp.get("result", {}).get("message_id"),
-                    }
-                )
+        try:
+            if post["image"]:
+                if len(post["images"]) == 1:
+                    bot.send_photo(post["image"], format_post(post))
+                else:
+                    media_entries = [
+                        {"type": "photo", "media": image} for image in post["images"]
+                    ]
+                    if post["video"]:
+                        media_entries.append({"type": "video", "media": post["video"]})
+                    bot.send_media_group(media_entries)
+                    bot.send_message(format_post(post))
+            elif post["video"]:
+                bot.send_video(post["video"], format_post(post))
             else:
-                media_entries = [
-                    {"type": "photo", "media": image} for image in post["images"]
-                ]
-                if post["video"]:
-                    media_entries.append({"type": "video", "media": post["video"]})
-                resp = bot.send_media_group(media_entries)
-                print(
-                    {
-                        "result": resp["result"],
-                        "message_id": resp.get("result", {}).get("message_id"),
-                    }
-                )
-                resp = bot.send_message(format_post(post))
-                print(
-                    {
-                        "result": resp["result"],
-                        "message_id": resp.get("result", {}).get("message_id"),
-                    }
-                )
-        elif post["video"]:
-            resp = bot.send_video(post["video"], format_post(post))
-            print(
-                {
-                    "result": resp["result"],
-                    "message_id": resp.get("result", {}).get("message_id"),
-                }
-            )
-        else:
-            resp = bot.send_message(format_post(post))
-            print(
-                {
-                    "result": resp["result"],
-                    "message_id": resp.get("result", {}).get("message_id"),
-                }
-            )
+                bot.send_message(format_post(post))
+            if post["post_id"]:
+                last_post_id = post["post_id"]
+        except Exception as e:
+            print(e)
+            continue
+
+    with open("session.txt", "w+") as f:
+        f.write(str(last_post_id))

@@ -22,7 +22,12 @@ jobs:
         run: |
           pipenv install --deploy --dev
 
-      - name: "Run main.py"
+      - name: Download previous run artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: session-artifact
+
+      - name: Run main.py
         run: pipenv run python main.py
         env:
           TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
@@ -33,3 +38,9 @@ jobs:
           sb: "${{ secrets.SB }}"
           xs: "${{ secrets.XS }}"
           GROUP_ID: "${{ secrets.GROUP_ID }}"
+
+      - name: Upload run artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: session-artifact
+          path: session.txt
