@@ -10,13 +10,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-    
-      - name: "Install requirements"
+
+      - id: cache-pipenv
+        uses: actions/cache@v1
+        with:
+          path: ~/.local/share/virtualenvs
+          key: ${{ runner.os }}-pipenv-${{ hashFiles('**/Pipfile.lock') }}
+
+      - name: Install dependencies
+        if: steps.cache-pipenv.outputs.cache-hit != 'true'
         run: |
-          pip install -r requirements.txt
-      
+          pipenv install --deploy --dev
+
       - name: "Run main.py"
-        run: python3 main.py
+        run: pipenv run python main.py
         env:
           TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
           TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
@@ -26,4 +33,3 @@ jobs:
           sb: "${{ secrets.SB }}"
           xs: "${{ secrets.XS }}"
           GROUP_ID: "${{ secrets.GROUP_ID }}"
-      
