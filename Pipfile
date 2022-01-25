@@ -6,6 +6,7 @@ name = "pypi"
 [packages]
 requests = "*"
 facebook-scraper = {git = "https://github.com/kevinzg/facebook-scraper.git"}
+beautifulsoup4 = "*"
 
 [dev-packages]
 
