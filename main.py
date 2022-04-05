@@ -66,26 +66,22 @@ class TelegramBot:
 
 
 def format_post(post):
-    post_url = post["post_url"].replace("m.facebook.com", "www.facebook.com")
+    time = post['time'] + datetime.timedelta(hours=5, minutes=30)
+    post_url = post["original_request_url"]
     message = (
         f"<a href='{post_url}'>{post.get('header', 'New post by '+ post['username'])}</a>\n"
-        f"<b>Time:</b> {post['time']}\n"
-        f"{post['post_text']}"
+        f"<b>Time:</b> {time}\n"
+        f"{post['text'] or post['post_text'] or post['shared_text'] or post['original_text']}"
     )
 
     # extract links from post
-    links = [post["link"]]
+    links = {post["link"],}
     for link in post["links"]:
-        links.append(link["text"])
-    links = set(links)
-    try:
-        links.remove(None)
-    except KeyError:
-        pass
+        links.add(link["text"])
+    links.discard(None)
     if links:
         message += "\nLinks:\n"
         message += "\n\n".join(links)
-
     return message
 
 
@@ -122,7 +118,8 @@ if __name__ == "__main__":
     new_post_ids = all_post_ids - old_post_ids
 
     new_post_urls = [
-        f"{FB_BASE_URL}/groups/{GROUP_ID}/permalink/{post_id}" for post_id in new_post_ids
+        f"{FB_BASE_URL}/groups/{GROUP_ID}/permalink/{post_id}"
+        for post_id in new_post_ids
     ]
 
     # facebook_scraper.enable_logging()
@@ -148,6 +145,8 @@ if __name__ == "__main__":
                         media_entries.append({"type": "video", "media": post["video"]})
                     bot.send_media_group(media_entries)
                     bot.send_message(format_post(post))
+            elif post["image_lowquality"]:
+                bot.send_photo(post["image_lowquality"], format_post(post))
             elif post["video"]:
                 bot.send_video(post["video"], format_post(post))
             else:
