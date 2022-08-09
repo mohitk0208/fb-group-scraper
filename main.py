@@ -75,7 +75,7 @@ def main():
         "xs": getenv("xs"),
     }
 
-    INTERVAL = int(getenv("INTERVAL", 60))
+    INTERVAL = int(getenv("INTERVAL", 30))
 
     bot = TelegramBot(
         bot_token=getenv("TELEGRAM_BOT_TOKEN"),
