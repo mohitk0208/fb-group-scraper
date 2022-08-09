@@ -11,8 +11,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install pipenv
-        run: pipx install pipenv
+      - name: Install deps
+        run: |
+          pipx install pipenv
+          sudo apt-get install -y libxml2-dev libxslt-dev
 
       - uses: actions/setup-python@v4
         with:
