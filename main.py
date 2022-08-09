@@ -1,21 +1,12 @@
 #!/usr/bin/env python3
 
-import datetime
+from datetime import datetime, timedelta
 import json
 from os import getenv
+from zoneinfo import ZoneInfo
+
 from bs4 import BeautifulSoup as bs
-
 import requests
-import facebook_scraper
-
-COOKIES = {
-    "c_user": getenv("c_user"),
-    "datr": getenv("datr"),
-    "fr": getenv("fr"),
-    "sb": getenv("sb"),
-    "xs": getenv("xs"),
-}
-GROUP_ID = getenv("GROUP_ID")
 
 FB_BASE_URL = "https://mbasic.facebook.com"
 
@@ -49,113 +40,127 @@ class TelegramBot:
         }
         return self._make_request("sendPhoto", payload)
 
-    def send_video(self, video_url, message):
-        payload = {
-            "video": video_url,
-            "caption": message,
-            **self._payload,
-        }
-        return self._make_request("sendVideo", payload)
-
-    def send_media_group(self, media_entries):
-        payload = {
-            "chat_id": self.chat_id,
-            "media": media_entries,
-        }
-        return self._make_request("sendMediaGroup", payload)
-
 
 def format_post(post):
-    time = post['time'] + datetime.timedelta(hours=5, minutes=30)
-    post_url = post["original_request_url"]
     message = (
-        f"<a href='{post_url}'>{post.get('header', 'New post by '+ post['username'])}</a>\n"
-        f"<b>Time:</b> {time}\n"
-        f"{post['text'] or post['post_text'] or post['shared_text'] or post['original_text']}"
+        f"<a href=\"{post['post_url']}\">{post['head']}</a>\n"
+        f"<b>Time:</b> {post['time']}\n"
+        f"{post['body']}"
     )
 
-    # extract links from post
-    links = {post["link"],}
-    for link in post["links"]:
-        links.add(link["text"])
-    links.discard(None)
-    if links:
+    if link := post.get("link"):
         message += "\nLinks:\n"
-        message += "\n\n".join(links)
+        message += f"<a href='{link}'>{post['link_text']}</a>"
     return message
 
 
-def fetch_posts(group_id):
-    session = requests.Session()
-    session.cookies = requests.utils.cookiejar_from_dict(COOKIES)
-    response = session.get(f"{FB_BASE_URL}/groups/{group_id}")
-    if not response.ok:
-        return []
-    soup = bs(response.text, "lxml")
-    posts = soup.select("#m_group_stories_container>div>div")
-    post_ids = []
-    for post in posts:
-        post_data_ft = json.loads(post.get("data-ft"))
-        post_ids.append(post_data_ft["top_level_post_id"])
-    return post_ids
+def get_text(soup):
+    if soup is None:
+        return ""
+    if isinstance(soup, str):
+        return soup
+    if soup.name == "a":
+        return soup["href"]
+    rec = [get_text(x) for x in soup.contents]
+    return "".join(rec) if soup.name == "span" else "\n".join(rec)
 
 
-if __name__ == "__main__":
+def main():
+    GROUP_ID = getenv("GROUP_ID")
+    COOKIES = {
+        "c_user": getenv("c_user"),
+        "datr": getenv("datr"),
+        "fr": getenv("fr"),
+        "sb": getenv("sb"),
+        "xs": getenv("xs"),
+    }
+
+    INTERVAL = int(getenv("INTERVAL", 60))
 
     bot = TelegramBot(
         bot_token=getenv("TELEGRAM_BOT_TOKEN"),
         chat_id=getenv("TELEGRAM_CHAT_ID"),
     )
 
-    try:
-        with open("session.txt", "r") as f:
-            old_post_ids = set(f.read().splitlines())
-    except (FileNotFoundError, TypeError) as e:
-        print(e)
-        old_post_ids = set()
+    now = (datetime.now() - timedelta(minutes=INTERVAL)).timestamp()
 
-    all_post_ids = set(fetch_posts(getenv("GROUP_ID"))) | old_post_ids
-    new_post_ids = all_post_ids - old_post_ids
+    page = f"{FB_BASE_URL}/groups/{GROUP_ID}"
+    session = requests.Session()
+    session.cookies = requests.utils.cookiejar_from_dict(COOKIES)
+    posts = []
 
-    new_post_urls = [
-        f"{FB_BASE_URL}/groups/{GROUP_ID}/permalink/{post_id}"
-        for post_id in new_post_ids
-    ]
+    to_fetch = 3
 
-    # facebook_scraper.enable_logging()
-    try:
-        _posts = facebook_scraper.get_posts(
-            cookies=COOKIES,
-            post_urls=new_post_urls,
+    while to_fetch > 0:
+        response = session.get(page)
+        soup = bs(response.text, "lxml")
+        for post in soup.select("#m_group_stories_container>div>div"):
+            _p = json.loads(post.get("data-ft"))
+            posts.append(
+                {
+                    "id": _p["top_level_post_id"],
+                    "time": next(iter(_p["page_insights"].values()))["post_context"][
+                        "publish_time"
+                    ],
+                }
+            )
+        posts.sort(key=lambda x: x["time"], reverse=True)
+        page = (
+            FB_BASE_URL
+            + soup.select_one("#m_group_stories_container>div:nth-child(2)>a")["href"]
         )
-    except facebook_scraper.exceptions.LoginError:
-        bot.send_message("Login failed. Someone stole your cookies.")
-        exit(1)
 
-    for post in list(_posts)[::-1]:
+        if posts[-1]["time"] < now:
+            to_fetch -= 1
+
+    for i in range(len(posts)):
+        if posts[i]["time"] < now:
+            break
+    posts = posts[: i + 1]
+
+    parsed_posts = []
+    for _post in posts:
+        post_url = f"{FB_BASE_URL}/groups/{GROUP_ID}/permalink/{_post['id']}"
+        # print(post_url)
+        response = session.get(post_url)
+        post = bs(response.text, "lxml").select_one("#m_story_permalink_view")
+
+        content = post.find(attrs={"data-ft": '{"tn":"*s"}'})
+
+        _pos = {
+            "id": _post["id"],
+            "post_url" : post_url,
+            "time": datetime.fromtimestamp(
+                _post["time"], tz=ZoneInfo("UTC")
+            ).astimezone(ZoneInfo("Asia/Kolkata")),
+            "head": content.previous_sibling.select_one(
+                "table>tbody>tr>td:nth-child(2)>div>h3"
+            ).text,
+            "body": get_text(content),
+            "content": content,
+        }
+
+        if footer := post.find(attrs={"data-ft": '{"tn":"H"}'}):
+            _link = footer.find("a")
+            link = _link["href"]
+            if link.startswith("http"):
+                _pos["link"] = link
+                _pos["link_text"] = _link.text
+            else:
+                _pos["image"] = footer.find("img")["src"]
+
+        parsed_posts.append(_pos)
+
+    print(parsed_posts)
+
+    for post in parsed_posts:
         try:
-            if post["image"]:
-                if len(post["images"]) == 1:
-                    bot.send_photo(post["image"], format_post(post))
-                else:
-                    media_entries = [
-                        {"type": "photo", "media": image} for image in post["images"]
-                    ]
-                    if post["video"]:
-                        media_entries.append({"type": "video", "media": post["video"]})
-                    bot.send_media_group(media_entries)
-                    bot.send_message(format_post(post))
-            elif post["image_lowquality"]:
-                bot.send_photo(post["image_lowquality"], format_post(post))
-            elif post["video"]:
-                bot.send_video(post["video"], format_post(post))
+            if post.get("image"):
+                bot.send_photo(post["image"], format_post(post))
             else:
                 bot.send_message(format_post(post))
-            if post["post_id"]:
-                last_post_id = post["post_id"]
         except Exception as e:
             print(e)
-            continue
 
-    with open("session.txt", "w+") as f:
-        f.write("\n".join(all_post_ids))
+if __name__ == "__main__":
+    main()
