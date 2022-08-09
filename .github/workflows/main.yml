@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 0-16 * * *"
+    - cron: "*/30 1-18 * * *"
 
 jobs:
   fetch:
@@ -32,4 +32,4 @@ jobs:
           sb: "${{ secrets.SB }}"
           xs: "${{ secrets.XS }}"
           GROUP_ID: "${{ secrets.GROUP_ID }}"
-          INTERVAl: 15
+          INTERVAl: 30
