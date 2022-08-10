@@ -1,4 +1,4 @@
 .vscode/
 .venv/
-.envrc
+.env
 session.txt

@@ -20,7 +20,7 @@ class TelegramBot:
         self._payload = {
             "chat_id": chat_id,
             "parse_mode": "HTML",
-            "disable_web_page_preview": "true"
+            "disable_web_page_preview": "true",
         }
 
     def _make_request(self, method, payload):
@@ -43,36 +43,38 @@ class TelegramBot:
         return self._make_request("sendPhoto", payload)
 
 
-def format_post(post):
+def format_message_body(post):
     message = (
         f"<a href=\"{post['post_url']}\">{post['head']}</a>\n"
-        f"<b>Time:</b> {post['time']}\n"
+        f"<b>Time:</b> {post['time']}\n\n"
         f"{post['body']}"
     )
-
     if link := post.get("link"):
-        message += "\nLinks:\n"
-        message += f"<a href='{link}'>{post['link_text']}</a>"
+        message += f"\n\n<a href='{link}'>{post['link_text']}</a>"
     return message
 
 
 def get_text(soup):
+    # hacky logic to flatten out deeply nested facebook post body
     if soup is None:
         return ""
     if soup.name == "a":
-        return "".join(soup.stripped_strings)
+        return "".join(soup.stripped_strings)  # urls won't have nested elements
+
     rec = []
-    for el in soup.contents:
-        if isinstance(el, str):
-            rec.append(el.strip())
+    for tag in soup.contents:
+        if isinstance(tag, str):
+            rec.append(tag.strip())
         else:
-            rec.append(get_text(el))
-    rec = filter(None, rec)
+            rec.append(get_text(tag))
+    rec = filter(None, rec)  # remove empty values
+    # FIXME: instead of flattening children flatten siblings if any one of them is a span
     return "".join(rec) if soup.name == "span" else "\n".join(rec)
 
 
 def main():
     GROUP_ID = getenv("GROUP_ID")
+    INTERVAL = int(getenv("INTERVAL", 30))
     COOKIES = {
         "c_user": getenv("c_user"),
         "datr": getenv("datr"),
@@ -81,33 +83,24 @@ def main():
         "xs": getenv("xs"),
     }
 
-    INTERVAL = int(getenv("INTERVAL", 30))
-
-    bot = TelegramBot(
-        bot_token=getenv("TELEGRAM_BOT_TOKEN"),
-        chat_id=getenv("TELEGRAM_CHAT_ID"),
-    )
-
-    now = (datetime.now() - timedelta(minutes=INTERVAL)).timestamp()
-
-    page = f"{FB_BASE_URL}/groups/{GROUP_ID}"
+    last_fetched = (datetime.now() - timedelta(minutes=INTERVAL)).timestamp()
     session = requests.Session()
     session.cookies = requests.utils.cookiejar_from_dict(COOKIES)
+
+    page = f"{FB_BASE_URL}/groups/{GROUP_ID}"
+    to_fetch = 3  # look ahead a few pages so that we dont miss out new posts
     posts = []
-
-    to_fetch = 3
-
     while to_fetch > 0:
         response = session.get(page)
         soup = bs(response.text, "lxml")
         for post in soup.select("#m_group_stories_container>div>div"):
-            _p = json.loads(post.get("data-ft"))
+            parsed_post = json.loads(post.get("data-ft"))
             posts.append(
                 {
-                    "id": _p["top_level_post_id"],
-                    "time": next(iter(_p["page_insights"].values()))["post_context"][
-                        "publish_time"
-                    ],
+                    "id": parsed_post["top_level_post_id"],
+                    "time": next(iter(parsed_post["page_insights"].values()))[
+                        "post_context"
+                    ]["publish_time"],
                 }
             )
         posts.sort(key=lambda x: x["time"], reverse=True)
@@ -116,12 +109,12 @@ def main():
             + soup.select_one("#m_group_stories_container>div:nth-child(2)>a")["href"]
         )
 
-        if posts[-1]["time"] < now:
+        if posts[-1]["time"] < last_fetched:
             to_fetch -= 1
 
     new_posts = []
     for post in posts:
-        if post["time"] < now:
+        if post["time"] < last_fetched:
             break
         new_posts.append(post)
 
@@ -134,21 +127,26 @@ def main():
 
         content = post.find(attrs={"data-ft": '{"tn":"*s"}'})
 
-        _pos = {
+        parsed_post = {
             "id": _post["id"],
             "post_url": post_url,
-            "time": datetime.fromtimestamp(
-                _post["time"], tz=ZoneInfo("UTC")
-            ).astimezone(ZoneInfo("Asia/Kolkata")),
+            "time": (
+                datetime.fromtimestamp(
+                    _post["time"],
+                    tz=ZoneInfo("UTC"),
+                )
+                .astimezone(ZoneInfo("Asia/Kolkata"))
+                .strftime("%a, %b %-m %-I:%M %p")
+            ),
             "head": content.previous_sibling.select_one(
                 "table>tbody>tr>td:nth-child(2)>div>h3"
             ).text,
             "body": get_text(content),
             # "text": list(content.stripped_strings),
-            # "content": content,
+            "content": content,
         }
 
-        if footer := post.find(attrs={"data-ft": '{"tn":"H"}'}):
+        if footer := content.next_sibling:
             _link = footer.find("a")
             link = _link["href"]
             if link.startswith("http"):
@@ -158,21 +156,27 @@ def main():
                         link = parsed_link["u"][0]
                     except (KeyError, IndexError):
                         link = ""
-                _pos["link"] = link
-                _pos["link_text"] = _link.text
+                parsed_post["link"] = link
+                parsed_post["link_text"] = next(_link.stripped_strings)
             else:
-                _pos["image"] = footer.find("img")["src"]
+                parsed_post["image"] = footer.find("img")["src"]
 
-        parsed_posts.append(_pos)
+        parsed_posts.append(parsed_post)
 
     # print(parsed_posts)
 
-    for post in parsed_posts:
+    bot = TelegramBot(
+        bot_token=getenv("TELEGRAM_BOT_TOKEN"),
+        chat_id=getenv("TELEGRAM_CHAT_ID"),
+    )
+
+    for post in parsed_posts[::-1]:
         try:
+            message_body = format_message_body(post)
             if post.get("image"):
-                bot.send_photo(post["image"], format_post(post))
+                bot.send_photo(post["image"], message_body)
             else:
-                bot.send_message(format_post(post))
+                bot.send_message(message_body)
         except Exception as e:
             print(e)
 
