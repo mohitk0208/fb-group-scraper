@@ -20,6 +20,7 @@ class TelegramBot:
         self._payload = {
             "chat_id": chat_id,
             "parse_mode": "HTML",
+            "disable_web_page_preview": "true"
         }
 
     def _make_request(self, method, payload):
