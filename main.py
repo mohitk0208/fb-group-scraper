@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 import json
 from os import getenv
+from urllib.parse import urlparse, parse_qs
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup as bs
@@ -60,7 +61,7 @@ def get_text(soup):
     if isinstance(soup, str):
         return soup
     if soup.name == "a":
-        return soup["href"]
+        return "".join(soup.stripped_strings)
     rec = [get_text(x) for x in soup.contents]
     return "".join(rec) if soup.name == "span" else "\n".join(rec)
 
@@ -130,7 +131,7 @@ def main():
 
         _pos = {
             "id": _post["id"],
-            "post_url" : post_url,
+            "post_url": post_url,
             "time": datetime.fromtimestamp(
                 _post["time"], tz=ZoneInfo("UTC")
             ).astimezone(ZoneInfo("Asia/Kolkata")),
@@ -145,6 +146,12 @@ def main():
             _link = footer.find("a")
             link = _link["href"]
             if link.startswith("http"):
+                if "lm.facebook" in link:
+                    parsed_link = parse_qs(urlparse(link))
+                    try:
+                        link = parsed_link["u"][0]
+                    except (KeyError, IndexError):
+                        link = ""
                 _pos["link"] = link
                 _pos["link_text"] = _link.text
             else:
@@ -162,6 +169,7 @@ def main():
                 bot.send_message(format_post(post))
         except Exception as e:
             print(e)
+
 
 if __name__ == "__main__":
     main()
