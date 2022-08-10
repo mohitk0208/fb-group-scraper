@@ -11,15 +11,19 @@
 
 ## Usage
 
-Install dependencies
+- Install dependencies
 
-`pipenv install`
+    ```shell
+    pipenv install
+    ```
 
-get cookies from facebook and put the in `.env` file (refer to `.env.example` for required values)
+- Get cookies from facebook and put them in `.env` file (refer to `.env.example` for required values)
 
-Run the scraper
+- Run the scraper
 
-`pipenv run python main.py`
+    ```shell
+    pipenv run python main.py
+    ```
 
 ## Contributing
 
