@@ -113,13 +113,14 @@ def main():
         if posts[-1]["time"] < now:
             to_fetch -= 1
 
-    for i in range(len(posts)):
-        if posts[i]["time"] < now:
+    new_posts = []
+    for post in posts:
+        if post["time"] < now:
             break
-    posts = posts[: i + 1]
+        new_posts.append(post)
 
     parsed_posts = []
-    for _post in posts:
+    for _post in new_posts:
         post_url = f"{FB_BASE_URL}/groups/{GROUP_ID}/permalink/{_post['id']}"
         # print(post_url)
         response = session.get(post_url)
