@@ -58,11 +58,15 @@ def format_post(post):
 def get_text(soup):
     if soup is None:
         return ""
-    if isinstance(soup, str):
-        return soup
     if soup.name == "a":
         return "".join(soup.stripped_strings)
-    rec = [get_text(x) for x in soup.contents]
+    rec = []
+    for el in soup.contents:
+        if isinstance(el, str):
+            rec.append(el.strip())
+        else:
+            rec.append(get_text(el))
+    rec = filter(None, rec)
     return "".join(rec) if soup.name == "span" else "\n".join(rec)
 
 
@@ -139,7 +143,8 @@ def main():
                 "table>tbody>tr>td:nth-child(2)>div>h3"
             ).text,
             "body": get_text(content),
-            "content": content,
+            # "text": list(content.stripped_strings),
+            # "content": content,
         }
 
         if footer := post.find(attrs={"data-ft": '{"tn":"H"}'}):
@@ -147,7 +152,7 @@ def main():
             link = _link["href"]
             if link.startswith("http"):
                 if "lm.facebook" in link:
-                    parsed_link = parse_qs(urlparse(link))
+                    parsed_link = parse_qs(urlparse(link).query)
                     try:
                         link = parsed_link["u"][0]
                     except (KeyError, IndexError):
@@ -159,7 +164,7 @@ def main():
 
         parsed_posts.append(_pos)
 
-    print(parsed_posts)
+    # print(parsed_posts)
 
     for post in parsed_posts:
         try:
