@@ -2,3 +2,5 @@
 .venv/
 .env
 session.txt
+downloads/*
+!downloads/.gitkeep

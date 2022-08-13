@@ -4,15 +4,17 @@ import contextlib
 from datetime import datetime, timedelta
 import json
 from os import getenv
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 from zoneinfo import ZoneInfo
+from pathlib import Path
 
 from bs4 import BeautifulSoup
 import requests
 
-
 FB_BASE_URL = "https://mbasic.facebook.com"
 
+# ipv6 is painful to work with
+requests.packages.urllib3.util.connection.HAS_IPV6 = False
 
 class TelegramBot:
     def __init__(self, bot_token, chat_id) -> None:
@@ -24,8 +26,8 @@ class TelegramBot:
             "disable_web_page_preview": "true",
         }
 
-    def _make_request(self, method, payload):
-        response = requests.post(f"{self.base_url}/{method}", timeout=1, json=payload)
+    def _make_request(self, method, **kwargs):
+        response = requests.post(f"{self.base_url}/{method}", **kwargs)
         return response.json()
 
     def send_message(self, message):
@@ -33,7 +35,7 @@ class TelegramBot:
             "text": message,
             **self._payload,
         }
-        return self._make_request("sendMessage", payload)
+        return self._make_request("sendMessage", data=payload)
 
     def send_photo(self, photo_url, message):
         payload = {
@@ -41,7 +43,18 @@ class TelegramBot:
             "caption": message,
             **self._payload,
         }
-        return self._make_request("sendPhoto", payload)
+        return self._make_request("sendPhoto", data=payload)
+
+    def send_document(self, file:Path, message):
+        payload = {
+            "caption": message,
+            **self._payload,
+        }
+        with file.open("rb") as f:
+            resp = self._make_request(
+                "sendDocument", data=payload, files={"document": f}
+            )
+        return resp
 
 
 class FacebookScraper:
@@ -50,6 +63,7 @@ class FacebookScraper:
         self.session.cookies = requests.utils.cookiejar_from_dict(cookies)
         self.group_id = group_id
         self.group_url = f"{FB_BASE_URL}/groups/{group_id}"
+        self.downloads_folder = Path(__file__).parent / "downloads"
 
     def fetch_new_posts(self, look_back):
         page = self.group_url
@@ -133,12 +147,22 @@ class FacebookScraper:
             _link = attachment.find("a")
             link = _link["href"]
             if link.startswith("http"):
-                if "lm.facebook" in link:
-                    parsed_link = parse_qs(urlparse(link).query)
-                    with contextlib.suppress(KeyError, IndexError):
-                        link = parsed_link["u"][0]
-                parsed_post["link"] = link
-                parsed_post["link_text"] = next(_link.stripped_strings)
+                try:
+                    parsed_link = urlparse(link)
+                    link_qs = parse_qs(parsed_link.query)
+                    link = link_qs["u"][0]
+                    if "lookaside.fbsbx.com" in link:
+                        filename = unquote(urlparse(link).path.split("/")[-1])
+                        file = self.downloads_folder / filename
+                        file.write_bytes((self.session.get(link).content))
+                        parsed_post["file"] = file
+                    else:
+                        parsed_post["link"] = link
+                        parsed_post["link_text"] = next(_link.stripped_strings)
+                except Exception as e:
+                    print(e)
+                    parsed_post["link"] = link
+                    parsed_post["link_text"] = next(_link.stripped_strings)
             else:
                 parsed_post["image"] = attachment.find("img")["src"]
         return parsed_post
@@ -182,10 +206,13 @@ def main():
     for post in posts:
         try:
             message_body = format_message_body(post)
-            if post.get("image"):
-                bot.send_photo(post["image"], message_body)
+            if image := post.get("image"):
+                response = bot.send_photo(image, message_body)
+            elif file := post.get("file"):
+                response = bot.send_document(file, message_body)
             else:
-                bot.send_message(message_body)
+                response = bot.send_message(message_body)
+            print(response)
         except Exception as e:
             print(e)
 
