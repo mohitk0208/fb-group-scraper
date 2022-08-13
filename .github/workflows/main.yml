@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/30 0-18,23 * * *"
+    - cron: "*/30 0-19 * * *"
 
 jobs:
   fetch:
@@ -27,9 +27,6 @@ jobs:
           TELEGRAM_BOT_TOKEN: "${{ secrets.TELEGRAM_BOT_TOKEN }}"
           TELEGRAM_CHAT_ID: "${{ secrets.TELEGRAM_CHAT_ID }}"
           c_user: "${{ secrets.C_USER }}"
-          datr: "${{ secrets.DATR }}"
-          fr: "${{ secrets.FR }}"
-          sb: "${{ secrets.SB }}"
           xs: "${{ secrets.XS }}"
           GROUP_ID: "${{ secrets.GROUP_ID }}"
-          INTERVAl: 30
+          LOOKBACK: 30

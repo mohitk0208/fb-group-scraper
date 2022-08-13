@@ -4,10 +4,10 @@
 
 ## Requirements
 
-- Facebook cookies: obviously
+- Facebook cookies: for obvious reasons
 - Pipenv: manage python environment
-- Telegram bot: to send messages on telegram
-- Direnv(optional)
+- Telegram bot: send messages on telegram
+- Direnv(optional): automatically load environment
 
 ## Usage
 
