@@ -134,7 +134,7 @@ class FacebookScraper:
                     tz=ZoneInfo("UTC"),
                 )
                 .astimezone(ZoneInfo("Asia/Kolkata"))
-                .strftime("%a, %b %-m %-I:%M %p")
+                .strftime("%a, %b %-d %-I:%M %p")
             ),
             "head": post.previous_sibling.select_one(
                 "table>tbody>tr>td:nth-child(2)>div>h3"
