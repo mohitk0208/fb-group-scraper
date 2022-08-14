@@ -16,6 +16,7 @@ FB_BASE_URL = "https://mbasic.facebook.com"
 # ipv6 is painful to work with
 requests.packages.urllib3.util.connection.HAS_IPV6 = False
 
+
 class TelegramBot:
     def __init__(self, bot_token, chat_id) -> None:
         self.bot_token = bot_token
@@ -28,7 +29,7 @@ class TelegramBot:
 
     def _make_request(self, method, **kwargs):
         response = requests.post(f"{self.base_url}/{method}", **kwargs)
-        return response.json()
+        return response.ok, response.json()
 
     def send_message(self, message):
         payload = {
@@ -37,17 +38,17 @@ class TelegramBot:
         }
         return self._make_request("sendMessage", data=payload)
 
-    def send_photo(self, photo_url, message):
+    def send_photo(self, photo_url, message_id):
         payload = {
             "photo": photo_url,
-            "caption": message,
+            "reply_to_message_id": message_id,
             **self._payload,
         }
         return self._make_request("sendPhoto", data=payload)
 
-    def send_document(self, file:Path, message):
+    def send_document(self, file: Path, message_id):
         payload = {
-            "caption": message,
+            "reply_to_message_id": message_id,
             **self._payload,
         }
         with file.open("rb") as f:
@@ -119,15 +120,11 @@ class FacebookScraper:
 
     def parse_post(self, post_id, post_time):
         post_url = f"{self.group_url}/permalink/{post_id}"
-        # print(post_url)
-        response = self.session.get(post_url)
-        post = BeautifulSoup(response.text, "lxml").find(
-            attrs={"data-ft": '{"tn":"*s"}'}
-        )
 
         parsed_post = {
+            "parse_complete": False,
             "id": post_id,
-            "post_url": post_url,
+            "url": post_url,
             "time": (
                 datetime.fromtimestamp(
                     post_time,
@@ -136,35 +133,63 @@ class FacebookScraper:
                 .astimezone(ZoneInfo("Asia/Kolkata"))
                 .strftime("%a, %b %-d %-I:%M %p")
             ),
-            "head": post.previous_sibling.select_one(
-                "table>tbody>tr>td:nth-child(2)>div>h3"
-            ).text,
-            "body": self.get_text(post),
-            # "content": post,
         }
 
-        if attachment := post.next_sibling:
-            _link = attachment.find("a")
-            link = _link["href"]
-            if link.startswith("http"):
-                try:
-                    parsed_link = urlparse(link)
+        try:
+            response = self.session.get(post_url)
+            post = BeautifulSoup(response.text, "lxml").find(
+                attrs={"data-ft": '{"tn":"*s"}'}
+            )
+            # parsed_post["content"] = post
+            parsed_post["header"] = post.previous_sibling.select_one(
+                "table>tbody>tr>td:nth-child(2)>div>h3"
+            ).text
+            parsed_post["body"] = self.get_text(post)
+
+            if attachment_container := post.next_sibling:
+                attachment = attachment_container.find("a")
+                attachment_link: str = attachment["href"]
+                if attachment_link.startswith("http"):
+                    # external link attached
+                    parsed_post["attachment_type"] = "link"
+                    parsed_post["attachment"] = attachment_link
+                    parsed_post["attachment_caption"] = next(
+                        attachment.stripped_strings, ""
+                    )
+                    # get actual link from lm.facebook.com/l.php
+                    parsed_link = urlparse(attachment_link)
                     link_qs = parse_qs(parsed_link.query)
-                    link = link_qs["u"][0]
-                    if "lookaside.fbsbx.com" in link:
-                        filename = unquote(urlparse(link).path.split("/")[-1])
+                    actual_link = link_qs["u"][0]
+                    # TODO: remove facebook trackers from actual link
+                    parsed_post["attachment"] = actual_link
+                    if "lookaside.fbsbx.com" in actual_link:
+                        # attachment is a file
+                        filename = unquote(urlparse(actual_link).path.split("/")[-1])
                         file = self.downloads_folder / filename
-                        file.write_bytes((self.session.get(link).content))
-                        parsed_post["file"] = file
-                    else:
-                        parsed_post["link"] = link
-                        parsed_post["link_text"] = next(_link.stripped_strings)
-                except Exception as e:
-                    print(e)
-                    parsed_post["link"] = link
-                    parsed_post["link_text"] = next(_link.stripped_strings)
-            else:
-                parsed_post["image"] = attachment.find("img")["src"]
+                        file.write_bytes((self.session.get(actual_link).content))
+                        parsed_post["attachment_type"] = "file"
+                        parsed_post["attachment"] = file
+                elif attachment_link.startswith("/photo"):
+                    # the attachment is an image
+                    parsed_post["attachment_type"] = "image"
+                    try:
+                        image_url = FB_BASE_URL + attachment_link
+                        image_id = parse_qs(urlparse(image_url).query)["fbid"][0]
+                        redirect_url = self.session.get(
+                            f"{FB_BASE_URL}/photo/view_full_size/?fbid={image_id}"
+                        )
+                        redirect_soup = BeautifulSoup(redirect_url.content, "lxml")
+                        parsed_post["attachment"] = redirect_soup.find("a")["href"]
+                    except Exception as e:
+                        print(e)
+                        parsed_post["attachment"] = attachment_container.find("img")[
+                            "src"
+                        ]
+
+            parsed_post["parse_complete"] = True
+        except Exception as e:
+            print(e)
+
         return parsed_post
 
     def get_posts(self, look_back):
@@ -180,12 +205,14 @@ class FacebookScraper:
 
 def format_message_body(post):
     message = (
-        f"<a href=\"{post['post_url']}\">{post['head']}</a>\n"
-        f"<b>Time:</b> {post['time']}\n\n"
-        f"{post['body']}"
+        f"<a href=\"{post.get('url')}\">{post.get('header')}</a>\n"
+        f"<b>Time:</b> {post.get('time')}\n\n"
+        f"{post.get('body')}"
     )
-    if link := post.get("link"):
-        message += f"\n<a href='{link}'>{post['link_text']}</a>"
+    if post.get("attachment_type") == "link":
+        message += (
+            f"\n\n<a href='{post['attachment']}'>{post['attachment_caption']}</a>"
+        )
     return message
 
 
@@ -204,17 +231,24 @@ def main():
     posts = scraper.get_posts(look_back)
 
     for post in posts:
-        try:
-            message_body = format_message_body(post)
-            if image := post.get("image"):
-                response = bot.send_photo(image, message_body)
-            elif file := post.get("file"):
-                response = bot.send_document(file, message_body)
-            else:
-                response = bot.send_message(message_body)
-            print(response)
-        except Exception as e:
-            print(e)
+        if post.get("parse_complete"):
+            message = format_message_body(post)
+            if len(message) > 4095:
+                message = f'{post["time"]}\n{post["url"]}'
+
+            ok, response = bot.send_message(message)
+            if not ok:
+                print(response)
+                continue
+
+            attachment_type = post.get("attachment_type")
+            attachment = post.get("attachment")
+            if attachment_type == "image":
+                bot.send_photo(attachment, response["result"]["message_id"])
+            elif attachment_type == "file":
+                bot.send_document(attachment, response["result"]["message_id"])
+        else:
+            bot.send_message(f'{post["time"]}\n{post["url"]}')
 
 
 if __name__ == "__main__":
