@@ -194,13 +194,7 @@ class FacebookScraper:
 
     def get_posts(self, look_back):
         latest_posts = self.fetch_new_posts(look_back)
-        parsed_posts = []
-        for post in latest_posts:
-            try:
-                parsed_posts.append(self.parse_post(post["id"], post["time"]))
-            except Exception as e:
-                print(e)
-        return parsed_posts
+        return [self.parse_post(post["id"], post["time"]) for post in latest_posts]
 
 
 def format_message_body(post):
