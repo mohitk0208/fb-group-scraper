@@ -2,37 +2,46 @@ import requests
 from pathlib import Path
 from bs4 import BeautifulSoup
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import List, Callable
 from urllib.parse import urlparse, parse_qs, unquote
 
 
 FB_BASE_URL = "https://mbasic.facebook.com"
 
-class FacebookPost:
-    def __init__(self, parsed_post_meta_data, cookies):
+
+class Facebook:
+    def __init__(self, cookies: dict):
         self.session = requests.Session()
         self.session.cookies = requests.utils.cookiejar_from_dict(cookies)
+
+
+class FacebookPost:
+    def __init__(self, client: Facebook, parsed_post_meta_data):
+        self.session = client.session
         self.id = parsed_post_meta_data["top_level_post_id"]
-        self.publish_time = next(iter(parsed_post_meta_data["page_insights"].values()))["post_context"]["publish_time"]
-        self.group_id = parsed_post_meta_data["page_id"]   # it is the group id
+        self.publish_time = next(iter(parsed_post_meta_data["page_insights"].values()))[
+            "post_context"
+        ]["publish_time"]
+        self.group_id = parsed_post_meta_data["page_id"]  # it is the group id
         self.group_url = f"{FB_BASE_URL}/groups/{self.group_id}"
         self.downloads_folder = Path(__file__).parent / "downloads"
         self.is_post_parsed = False
         self.url = f"{self.group_url}/permalink/{self.id}"
         self.formatted_time = (
-                datetime.fromtimestamp(self.publish_time,tz=ZoneInfo("UTC"),)
-                .astimezone(ZoneInfo("Asia/Kolkata"))
-                .strftime("%a, %b %-d %-I:%M %p")
+            datetime.fromtimestamp(
+                self.publish_time,
+                tz=ZoneInfo("UTC"),
             )
+            .astimezone(ZoneInfo("Asia/Kolkata"))
+            .strftime("%a, %b %-d %-I:%M %p")
+        )
         self.header = None
         self.body = None
         self.attachment_type = None
         self.attachment = None
         self.attachment_caption = None
         self.parse_post()
-
 
     def get_text(self, soup) -> str:
         # hacky logic to flatten out deeply nested facebook post body
@@ -50,7 +59,6 @@ class FacebookPost:
         # FIXME: instead of flattening children flatten siblings if any one of them is a span
         return "".join(rec) if soup.name == "span" else "\n".join(rec)
 
-
     def parse_post(self):
 
         try:
@@ -59,7 +67,9 @@ class FacebookPost:
                 attrs={"data-ft": '{"tn":"*s"}'}
             )
             # parsed_post["content"] = post
-            self.header = post.previous_sibling.select_one("table>tbody>tr>td:nth-child(2)>div>h3").text
+            self.header = post.previous_sibling.select_one(
+                "table>tbody>tr>td:nth-child(2)>div>h3"
+            ).text
             self.body = self.get_text(post)
 
             if attachment_container := post.next_sibling:
@@ -69,9 +79,7 @@ class FacebookPost:
                     # external link attached
                     self.attachment_type = "link"
                     self.attachment = attachment_link
-                    self.attachment_caption = next(
-                        attachment.stripped_strings, ""
-                    )
+                    self.attachment_caption = next(attachment.stripped_strings, "")
 
                     # get actual link from lm.facebook.com/l.php
                     parsed_link = urlparse(attachment_link)
@@ -100,76 +108,63 @@ class FacebookPost:
                         self.attachment = redirect_soup.find("a")["href"]
                     except Exception as e:
                         print(e)
-                        self.attachment = attachment_container.find("img")[
-                            "src"
-                        ]
+                        self.attachment = attachment_container.find("img")["src"]
 
             self.is_post_parsed = True
         except Exception as e:
             print(e)
 
-
-    def get_formatted_message_body_for_telegram(self)->str:
+    def get_formatted_message_body_for_telegram(self) -> str:
         message = (
-            f"<a href=\"{self.url}\">{self.header}</a>\n"
+            f'<a href="{self.url}">{self.header}</a>\n'
             f"<b>Time:</b> {self.formatted_time}\n\n"
             f"{self.body}"
         )
         if self.attachment_type == "link":
-            message += (
-                f"\n\n<a href='{self.attachment}'>{self.attachment_caption}</a>"
-            )
+            message += f"\n\n<a href='{self.attachment}'>{self.attachment_caption}</a>"
         return message
 
+
 class FacebookScraper:
-    def __init__(self, cookies, group_id):
-        self.session = requests.Session()
-        self.session.cookies = requests.utils.cookiejar_from_dict(cookies)
-        self.cookies = cookies
+    def __init__(self, client: Facebook, group_id: str):
+        self.client = client
+        self.session = client.session
         self.group_id = group_id
         self.group_url = f"{FB_BASE_URL}/groups/{group_id}"
 
+    def get_posts_till_lookback(
+        self, num_of_after_pages: int, look_back: int
+    ) -> list[FacebookPost]:
+        """
+        Fetch posts from facebook group
 
-    def get_posts_from_next_n_pages(self, pages_to_fetch:int)->list[FacebookPost]:
-        if pages_to_fetch <= 0:
-            return []
+        Parameters
+        ----------
+        num_of_after_pages : int
+            number of extra pages to fetch after posts till lookback have been fetched.
+        look_back : int
+            time in minutes.
+
+        Returns
+        -------
+        list[FacebookPost]
+        """
         page = self.group_url
-        posts:list[FacebookPost] = list()
-        while pages_to_fetch > 0:
-            response = self.session.get(page)
-            soup = BeautifulSoup(response.text, "lxml")
-            for post in soup.select("#m_group_stories_container>div>div"):
-                parsed_post = json.loads(post.get("data-ft"))
-                posts.append(FacebookPost(parsed_post, self.cookies))
-
-            page = (
-                FB_BASE_URL
-                + soup.select_one("#m_group_stories_container>div:nth-child(2)>a")[
-                    "href"
-                ]
-            )
-
-            pages_to_fetch -= 1
-
-        posts.sort(key=lambda x: x.publish_time, reverse=True)
-        return posts
-
-
-    def get_posts_till_next_n_pages_after_lookback_exceeds(self, num_of_after_pages:int, look_back:int) -> list[FacebookPost]:
-        page = self.group_url
-        posts:list[FacebookPost] = list()
+        posts: list[FacebookPost] = list()
         least_recent_post_time = float("inf")
 
         while num_of_after_pages > 0:
+
             response = self.session.get(page)
             soup = BeautifulSoup(response.text, "lxml")
+            least_recent_post_time = float("inf")
+
             for post in soup.select("#m_group_stories_container>div>div"):
                 parsed_post = json.loads(post.get("data-ft"))
-                post = FacebookPost(parsed_post, self.cookies)
+                post = FacebookPost(self.client, parsed_post)
                 posts.append(post)
                 least_recent_post_time = min(least_recent_post_time, post.publish_time)
 
-            # posts.sort(key=lambda x: x.publish_time, reverse=True)
             page = (
                 FB_BASE_URL
                 + soup.select_one("#m_group_stories_container>div:nth-child(2)>a")[
@@ -183,10 +178,9 @@ class FacebookScraper:
         posts.sort(key=lambda x: x.publish_time, reverse=True)
         return posts
 
+    def get_new_posts(self, look_back: int) -> list[FacebookPost]:
 
-    def get_new_posts(self, look_back:int) -> list[FacebookPost]:
-
-        posts = self.get_posts_till_next_n_pages_after_lookback_exceeds(3, look_back)
-        new_posts = list(filter(lambda x:x.publish_time >= look_back, posts))
+        posts = self.get_posts_till_lookback(3, look_back)
+        new_posts = list(filter(lambda x: x.publish_time >= look_back, posts))
 
         return new_posts[::-1]

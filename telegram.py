@@ -2,8 +2,6 @@ from pathlib import Path
 import requests
 
 
-
-
 class TelegramBot:
     def __init__(self, bot_token, chat_id) -> None:
         self.bot_token = bot_token
@@ -43,5 +41,3 @@ class TelegramBot:
                 "sendDocument", data=payload, files={"document": f}
             )
         return resp
-
-
