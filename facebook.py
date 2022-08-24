@@ -34,6 +34,23 @@ class FacebookPost:
         self.parse_post()
 
 
+    def get_text(self, soup) -> str:
+        # hacky logic to flatten out deeply nested facebook post body
+        if soup is None:
+            return ""
+        if soup.name == "a":
+            return "".join(soup.stripped_strings)  # urls won't have nested elements
+        rec = []
+        for tag in soup.contents:
+            if isinstance(tag, str):
+                rec.append(tag.strip())
+            else:
+                rec.append(self.get_text(tag))
+        rec = filter(None, rec)  # remove empty values
+        # FIXME: instead of flattening children flatten siblings if any one of them is a span
+        return "".join(rec) if soup.name == "span" else "\n".join(rec)
+
+
     def parse_post(self):
 
         try:
@@ -43,7 +60,7 @@ class FacebookPost:
             )
             # parsed_post["content"] = post
             self.header = post.previous_sibling.select_one("table>tbody>tr>td:nth-child(2)>div>h3").text
-            self.body = FacebookScraper.get_text(post)
+            self.body = self.get_text(post)
 
             if attachment_container := post.next_sibling:
                 attachment = attachment_container.find("a")
@@ -92,6 +109,17 @@ class FacebookPost:
             print(e)
 
 
+    def get_formatted_message_body_for_telegram(self)->str:
+        message = (
+            f"<a href=\"{self.url}\">{self.header}</a>\n"
+            f"<b>Time:</b> {self.formatted_time}\n\n"
+            f"{self.body}"
+        )
+        if self.attachment_type == "link":
+            message += (
+                f"\n\n<a href='{self.attachment}'>{self.attachment_caption}</a>"
+            )
+        return message
 
 class FacebookScraper:
     def __init__(self, cookies, group_id):
@@ -101,18 +129,19 @@ class FacebookScraper:
         self.group_id = group_id
         self.group_url = f"{FB_BASE_URL}/groups/{group_id}"
 
-    def fetch_new_posts(self, look_back:int) -> list[FacebookPost]:
+
+    def get_posts_from_next_n_pages(self, pages_to_fetch:int)->list[FacebookPost]:
+        if pages_to_fetch <= 0:
+            return []
         page = self.group_url
-        to_fetch = 1  # look ahead a few pages so that we dont miss out new posts
         posts:list[FacebookPost] = list()
-        while to_fetch > 0:
+        while pages_to_fetch > 0:
             response = self.session.get(page)
             soup = BeautifulSoup(response.text, "lxml")
             for post in soup.select("#m_group_stories_container>div>div"):
                 parsed_post = json.loads(post.get("data-ft"))
                 posts.append(FacebookPost(parsed_post, self.cookies))
 
-            posts.sort(key=lambda x: x.publish_time, reverse=True)
             page = (
                 FB_BASE_URL
                 + soup.select_one("#m_group_stories_container>div:nth-child(2)>a")[
@@ -120,41 +149,44 @@ class FacebookScraper:
                 ]
             )
 
-            if posts[-1].publish_time < look_back:
-                to_fetch -= 1
+            pages_to_fetch -= 1
 
-            new_posts = []
-            for post in posts:
-                if post.publish_time < look_back:
-                    break
-                new_posts.append(post)
+        posts.sort(key=lambda x: x.publish_time, reverse=True)
+        return posts
+
+
+    def get_posts_till_next_n_pages_after_lookback_exceeds(self, num_of_after_pages:int, look_back:int) -> list[FacebookPost]:
+        page = self.group_url
+        posts:list[FacebookPost] = list()
+        least_recent_post_time = float("inf")
+
+        while num_of_after_pages > 0:
+            response = self.session.get(page)
+            soup = BeautifulSoup(response.text, "lxml")
+            for post in soup.select("#m_group_stories_container>div>div"):
+                parsed_post = json.loads(post.get("data-ft"))
+                post = FacebookPost(parsed_post, self.cookies)
+                posts.append(post)
+                least_recent_post_time = min(least_recent_post_time, post.publish_time)
+
+            # posts.sort(key=lambda x: x.publish_time, reverse=True)
+            page = (
+                FB_BASE_URL
+                + soup.select_one("#m_group_stories_container>div:nth-child(2)>a")[
+                    "href"
+                ]
+            )
+
+            if least_recent_post_time < look_back:
+                num_of_after_pages -= 1
+
+        posts.sort(key=lambda x: x.publish_time, reverse=True)
+        return posts
+
+
+    def get_new_posts(self, look_back:int) -> list[FacebookPost]:
+
+        posts = self.get_posts_till_next_n_pages_after_lookback_exceeds(3, look_back)
+        new_posts = list(filter(lambda x:x.publish_time >= look_back, posts))
 
         return new_posts[::-1]
-
-
-    @staticmethod
-    def get_text(soup):
-        # hacky logic to flatten out deeply nested facebook post body
-        if soup is None:
-            return ""
-        if soup.name == "a":
-            return "".join(soup.stripped_strings)  # urls won't have nested elements
-        rec = []
-        for tag in soup.contents:
-            if isinstance(tag, str):
-                rec.append(tag.strip())
-            else:
-                rec.append(FacebookScraper.get_text(tag))
-        rec = filter(None, rec)  # remove empty values
-        # FIXME: instead of flattening children flatten siblings if any one of them is a span
-        return "".join(rec) if soup.name == "span" else "\n".join(rec)
-
-
-        return parsed_post
-
-
-    def get_posts(self, look_back:int):
-        return self.fetch_new_posts(look_back)
-        # latest_posts:list[FacebookPost] = self.fetch_new_posts(look_back)
-        # return [self.parse_post(post.id, post.publish_time) for post in latest_posts]
-

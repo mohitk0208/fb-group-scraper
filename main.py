@@ -10,19 +10,6 @@ from telegram import TelegramBot
 from facebook import FacebookScraper, FacebookPost
 
 
-def format_message_body(post:FacebookPost):
-    message = (
-        f"<a href=\"{post.url}\">{post.header}</a>\n"
-        f"<b>Time:</b> {post.formatted_time}\n\n"
-        f"{post.body}"
-    )
-    if post.attachment_type == "link":
-        message += (
-            f"\n\n<a href='{post.attachment}'>{post.attachment_caption}</a>"
-        )
-    return message
-
-
 def main():
     COOKIES = {
         "c_user": getenv("c_user"),
@@ -35,11 +22,11 @@ def main():
     scraper = FacebookScraper(COOKIES, getenv("GROUP_ID"))
     bot = TelegramBot(getenv("TELEGRAM_BOT_TOKEN"), getenv("TELEGRAM_CHAT_ID"))
 
-    posts = scraper.get_posts(look_back)
+    posts = scraper.get_new_posts(look_back)
 
     for post in posts:
         if post.is_post_parsed:
-            message = format_message_body(post)
+            message = post.get_formatted_message_body_for_telegram()
             if len(message) > 4095:
                 message = f'{post.formatted_time}\n{post.url}'
 
