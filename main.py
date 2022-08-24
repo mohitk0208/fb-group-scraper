@@ -22,7 +22,7 @@ def main():
 
     facebook_client = Facebook(COOKIES)
 
-    scraper = FacebookScraper(facebook_client, getenv("GROUP_ID"))
+    scraper = FacebookScraper(facebook_client, getenv("FACEBOOK_GROUP_ID"))
     bot = TelegramBot(getenv("TELEGRAM_BOT_TOKEN"), getenv("TELEGRAM_CHAT_ID"))
 
     posts = scraper.get_new_posts(look_back)
