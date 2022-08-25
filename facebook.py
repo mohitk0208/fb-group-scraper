@@ -67,7 +67,7 @@ class FacebookPost:
 
         try:
             response = self.session.get(self.url)
-            post = BeautifulSoup(response.text, "lxml").find(
+            post = BeautifulSoup(response.text, "xml").find(
                 attrs={"data-ft": '{"tn":"*s"}'}
             )
             # parsed_post["content"] = post
@@ -114,7 +114,7 @@ class FacebookPost:
                         redirect_url = self.session.get(
                             f"{FB_BASE_URL}/photo/view_full_size/?fbid={image_id}"
                         )
-                        redirect_soup = BeautifulSoup(redirect_url.content, "lxml")
+                        redirect_soup = BeautifulSoup(redirect_url.content, "xml")
                         self.attachment = redirect_soup.find("a")["href"]
                     except Exception as e:
                         print(e)
@@ -171,7 +171,7 @@ class FacebookScraper:
         while num_of_after_pages > 0:
 
             response = self.session.get(page)
-            soup = BeautifulSoup(response.text, "lxml")
+            soup = BeautifulSoup(response.text, "xml")
             least_recent_post_time = float("inf")
 
             for post in soup.select("#m_group_stories_container>div>div"):
