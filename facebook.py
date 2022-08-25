@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote, urljoin
 
 
 FB_BASE_URL = "https://mbasic.facebook.com"
@@ -37,6 +37,10 @@ class FacebookPost:
             .strftime("%a, %b %-d %-I:%M %p")
         )
         self.header = None
+        self.posted_by = None
+        self.posted_by_url = None
+        self.event = None
+        self.group_name = None
         self.body = None
         self.attachment_type = None
         self.attachment = None
@@ -67,9 +71,15 @@ class FacebookPost:
                 attrs={"data-ft": '{"tn":"*s"}'}
             )
             # parsed_post["content"] = post
-            self.header = post.previous_sibling.select_one(
+            head = post.previous_sibling.select_one(
                 "table>tbody>tr>td:nth-child(2)>div>h3"
-            ).text
+            )
+            self.header = head.text
+            self.posted_by = head.select("strong>a")[0].text
+            self.posted_by_url = self.remove_url_query_params(f'{FB_BASE_URL}{head.select("strong>a")[0]["href"]}')
+            self.event = head.find(text=True, recursive=False)
+            self.group_name = head.select("strong>a")[1].text
+
             self.body = self.get_text(post)
 
             if attachment_container := post.next_sibling:
@@ -116,14 +126,19 @@ class FacebookPost:
 
     def get_formatted_message_body_for_telegram(self) -> str:
         message = (
-            f'<a href="{self.url}">{self.header}</a>\n'
-            f"<b>Time:</b> {self.formatted_time}\n\n"
+            f'<a href="{self.posted_by_url}">{self.posted_by}</a>'
+            f'{self.event}'
+            f'<b><a href="{self.group_url}">{self.group_name}</a></b>\n'
+            f"<code>{self.formatted_time}</code>\n\n"
             f"{self.body}"
+            f'\n<a href="{self.url}">view on facebook</a>'
         )
         if self.attachment_type == "link":
             message += f"\n\n<a href='{self.attachment}'>{self.attachment_caption}</a>"
         return message
 
+    def remove_url_query_params(self, url:str):
+        return urljoin(url, urlparse(url).path)
 
 class FacebookScraper:
     def __init__(self, client: Facebook, group_id: str):
