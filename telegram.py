@@ -23,17 +23,19 @@ class TelegramBot:
         }
         return self._make_request("sendMessage", data=payload)
 
-    def send_photo(self, photo_url, message_id):
+    def send_photo(self, photo_url, message_id=None, caption=""):
         payload = {
             "photo": photo_url,
             "reply_to_message_id": message_id,
+            "caption": caption,
             **self._payload,
         }
         return self._make_request("sendPhoto", data=payload)
 
-    def send_document(self, file: Path, message_id):
+    def send_document(self, file: Path, message_id=None, caption="" ):
         payload = {
             "reply_to_message_id": message_id,
+            "caption": caption,
             **self._payload,
         }
         with file.open("rb") as f:

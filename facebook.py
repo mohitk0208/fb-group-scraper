@@ -77,7 +77,7 @@ class FacebookPost:
             self.header = head.text
             self.posted_by = head.select("strong>a")[0].text
             self.posted_by_url = self.remove_url_query_params(f'{FB_BASE_URL}{head.select("strong>a")[0]["href"]}')
-            self.event = head.find(text=True, recursive=False)
+            self.event = head.find(text=True, recursive=False) or " &gt; "
             self.group_name = head.select("strong>a")[1].text
 
             self.body = self.get_text(post)
