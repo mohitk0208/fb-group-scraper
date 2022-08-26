@@ -31,19 +31,32 @@ def main():
         if post.is_post_parsed:
             message = post.get_formatted_message_body_for_telegram()
             if len(message) > 4095:
-                message = f"{post.formatted_time}\n{post.url}"
+                message = (
+                        f"{post.formatted_time}\n{post.url}"
+                        f"Message TOO large to display \n "
+                        f'<a href="{post.url}" >view it on facebook</a>'
+                    )
 
-            ok, response = bot.send_message(message)
-            if not ok:
-                print(response)
-                continue
 
             attachment_type = post.attachment_type
             attachment = post.attachment
-            if attachment_type == "image":
-                bot.send_photo(attachment, response["result"]["message_id"])
-            elif attachment_type == "file":
-                bot.send_document(attachment, response["result"]["message_id"])
+            if len(message) < 1024:
+                if attachment_type == "image":
+                    bot.send_photo(attachment, caption=message)
+                elif attachment_type == "file":
+                    bot.send_document(attachment, caption=message)
+                else:
+                    bot.send_message(message)
+            else:
+                ok, response = bot.send_message(message)
+                if not ok:
+                    print(response)
+                    continue
+
+                if attachment_type == "image":
+                    bot.send_photo(attachment, message_id=response["result"]["message_id"])
+                elif attachment_type == "file":
+                    bot.send_document(attachment,message_id=response["result"]["message_id"])
         else:
             bot.send_message(f"{post.formatted_time}\n{post.url}")
 

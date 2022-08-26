@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote, urljoin
 
 
 FB_BASE_URL = "https://mbasic.facebook.com"
@@ -37,6 +37,10 @@ class FacebookPost:
             .strftime("%a, %b %-d %-I:%M %p")
         )
         self.header = None
+        self.posted_by = None
+        self.posted_by_url = None
+        self.event = None
+        self.group_name = None
         self.body = None
         self.attachment_type = None
         self.attachment = None
@@ -53,6 +57,10 @@ class FacebookPost:
         for tag in soup.contents:
             if isinstance(tag, str):
                 rec.append(tag.strip())
+            elif tag.name in ("h1", "h2", "h3", "h4", "h5", "h6", "strong", "b"):
+                rec.append(f"<b>{self.get_text(tag)}</b>")
+            elif tag.name in ("em", "i"):
+                rec.append(f"<i>{self.get_text(tag)}</i>")
             else:
                 rec.append(self.get_text(tag))
         rec = filter(None, rec)  # remove empty values
@@ -63,13 +71,19 @@ class FacebookPost:
 
         try:
             response = self.session.get(self.url)
-            post = BeautifulSoup(response.text, "lxml").find(
+            post = BeautifulSoup(response.text, "xml").find(
                 attrs={"data-ft": '{"tn":"*s"}'}
             )
             # parsed_post["content"] = post
-            self.header = post.previous_sibling.select_one(
+            head = post.previous_sibling.select_one(
                 "table>tbody>tr>td:nth-child(2)>div>h3"
-            ).text
+            )
+            self.header = head.text
+            self.posted_by = head.select("strong>a")[0].text
+            self.posted_by_url = self.remove_url_query_params(f'{FB_BASE_URL}{head.select("strong>a")[0]["href"]}')
+            self.event = head.find(text=True, recursive=False) or " &gt; "
+            self.group_name = head.select("strong>a")[1].text
+
             self.body = self.get_text(post)
 
             if attachment_container := post.next_sibling:
@@ -104,7 +118,7 @@ class FacebookPost:
                         redirect_url = self.session.get(
                             f"{FB_BASE_URL}/photo/view_full_size/?fbid={image_id}"
                         )
-                        redirect_soup = BeautifulSoup(redirect_url.content, "lxml")
+                        redirect_soup = BeautifulSoup(redirect_url.content, "xml")
                         self.attachment = redirect_soup.find("a")["href"]
                     except Exception as e:
                         print(e)
@@ -116,14 +130,19 @@ class FacebookPost:
 
     def get_formatted_message_body_for_telegram(self) -> str:
         message = (
-            f'<a href="{self.url}">{self.header}</a>\n'
-            f"<b>Time:</b> {self.formatted_time}\n\n"
+            f'<a href="{self.posted_by_url}">{self.posted_by}</a>'
+            f'{self.event}'
+            f'<b><a href="{self.group_url}">{self.group_name}</a></b>\n'
+            f"<code>{self.formatted_time}</code>\n\n"
             f"{self.body}"
+            f'\n<a href="{self.url}">view on facebook</a>'
         )
         if self.attachment_type == "link":
             message += f"\n\n<a href='{self.attachment}'>{self.attachment_caption}</a>"
         return message
 
+    def remove_url_query_params(self, url:str):
+        return urljoin(url, urlparse(url).path)
 
 class FacebookScraper:
     def __init__(self, client: Facebook, group_id: str):
@@ -156,7 +175,7 @@ class FacebookScraper:
         while num_of_after_pages > 0:
 
             response = self.session.get(page)
-            soup = BeautifulSoup(response.text, "lxml")
+            soup = BeautifulSoup(response.text, "xml")
             least_recent_post_time = float("inf")
 
             for post in soup.select("#m_group_stories_container>div>div"):
