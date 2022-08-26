@@ -57,6 +57,10 @@ class FacebookPost:
         for tag in soup.contents:
             if isinstance(tag, str):
                 rec.append(tag.strip())
+            elif tag.name in ("h1", "h2", "h3", "h4", "h5", "h6", "strong", "b"):
+                rec.append(f"<b>{self.get_text(tag)}</b>")
+            elif tag.name in ("em", "i"):
+                rec.append(f"<i>{self.get_text(tag)}</i>")
             else:
                 rec.append(self.get_text(tag))
         rec = filter(None, rec)  # remove empty values
