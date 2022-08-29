@@ -21,10 +21,15 @@ jobs:
 
       - run: pipenv install
 
-      - name: Download previous run artifacts
-        uses: actions/download-artifact@v2
+      - name: Download artifact
+        uses: dawidd6/action-download-artifact@v2
+        continue-on-error: true
         with:
+          github_token: ${{secrets.GITHUB_TOKEN}}
+          workflow: main.yml
+          workflow_conclusion: success
           name: session-artifact
+          path: ./
 
       - name: Run main.py
         run: pipenv run python main.py
