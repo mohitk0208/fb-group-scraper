@@ -21,6 +21,11 @@ jobs:
 
       - run: pipenv install
 
+      - name: Download previous run artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: session-artifact
+
       - name: Run main.py
         run: pipenv run python main.py
         env:
@@ -31,3 +36,9 @@ jobs:
           FACEBOOK_GROUP_ID: "${{ secrets.GROUP_ID }}"
           LOOKBACK: 30
           LEEWAY: 2
+
+      - name: Upload run artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: session-artifact
+          path: session.txt
