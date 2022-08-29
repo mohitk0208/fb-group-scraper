@@ -35,7 +35,6 @@ jobs:
           xs: "${{ secrets.XS }}"
           FACEBOOK_GROUP_ID: "${{ secrets.GROUP_ID }}"
           LOOKBACK: 30
-          LEEWAY: 2
 
       - name: Upload run artifact
         uses: actions/upload-artifact@v2

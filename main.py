@@ -15,7 +15,6 @@ def main():
         "c_user": getenv("c_user"),
         "xs": getenv("xs"),
     }
-    leeway = int(getenv("LEEWAY", 2))
 
     last_post_time = None
     try:
@@ -29,7 +28,7 @@ def main():
         look_back = (last_post_time + extra_microseconds ).timestamp()
     else:
         look_back = (
-            datetime.now() - timedelta(minutes=int(getenv("LOOKBACK", 30)) + leeway)
+            datetime.now() - timedelta(minutes=int(getenv("LOOKBACK", 30)))
         ).timestamp()
 
     facebook_client = Facebook(COOKIES)
