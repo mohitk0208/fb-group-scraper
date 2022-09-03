@@ -46,10 +46,10 @@ def main():
             message = post.get_formatted_message_body_for_telegram()
             if len(message) > 4095:
                 message = (
-                        f"{post.formatted_time}\n{post.url}"
-                        f"Message TOO large to display \n "
-                        f'<a href="{post.url}" >view it on facebook</a>'
-                    )
+                f"{post.formatted_time}"
+                f"\nMessage TOO large to display \nDirect link below \n{post.url} \n "
+                f'<a href="{post.url}" >view it on facebook</a>'
+            )
 
 
             attachment_type = post.attachment_type
