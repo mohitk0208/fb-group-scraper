@@ -13,7 +13,7 @@ FB_BASE_URL = "https://mbasic.facebook.com"
 class Facebook:
     def __init__(self, cookies: dict):
         cookies |= {
-            "noscript": 1,
+            "noscript": "1",
         }
         self.default_headers = {
             "Accept": "*/*",
