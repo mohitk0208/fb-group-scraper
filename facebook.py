@@ -146,11 +146,11 @@ class FacebookPost:
             f"{self.event}"
             f'<b><a href="{self.group_url}">{self.group_name}</a></b>\n'
             f"<code>{self.formatted_time}</code>\n\n"
-            f"{self.body}"
-            f'\n<a href="{self.url}">view on facebook</a>'
+            f"{self.body}\n\n"
         )
         if self.attachment_type == "link":
-            message += f"\n\n<a href='{self.attachment}'>{self.attachment_caption}</a>"
+            message += f"<a href='{self.attachment}'>{self.attachment_caption}</a>\n"
+        message += f'<a href="{self.url}">view on facebook</a>'
         return message
 
     def remove_url_query_params(self, url: str):
