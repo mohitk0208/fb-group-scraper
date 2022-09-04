@@ -12,7 +12,17 @@ FB_BASE_URL = "https://mbasic.facebook.com"
 
 class Facebook:
     def __init__(self, cookies: dict):
+        cookies |= {
+            "noscript": 1,
+        }
+        self.default_headers = {
+            "Accept": "*/*",
+            "Connection": "keep-alive",
+            "Accept-Encoding": "gzip,deflate",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) FxQuantum/104.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Mobile Safari/537.36",
+        }
         self.session = requests.Session()
+        self.session.headers.update(self.default_headers)
         self.session.cookies = requests.utils.cookiejar_from_dict(cookies)
 
 
@@ -80,7 +90,9 @@ class FacebookPost:
             )
             self.header = head.text
             self.posted_by = head.select("strong>a")[0].text
-            self.posted_by_url = self.remove_url_query_params(f'{FB_BASE_URL}{head.select("strong>a")[0]["href"]}')
+            self.posted_by_url = self.remove_url_query_params(
+                f'{FB_BASE_URL}{head.select("strong>a")[0]["href"]}'
+            )
             self.event = head.find(text=True, recursive=False) or " &gt; "
             self.group_name = head.select("strong>a")[1].text
 
@@ -131,7 +143,7 @@ class FacebookPost:
     def get_formatted_message_body_for_telegram(self) -> str:
         message = (
             f'<a href="{self.posted_by_url}">{self.posted_by}</a>'
-            f'{self.event}'
+            f"{self.event}"
             f'<b><a href="{self.group_url}">{self.group_name}</a></b>\n'
             f"<code>{self.formatted_time}</code>\n\n"
             f"{self.body}"
@@ -141,8 +153,9 @@ class FacebookPost:
             message += f"\n\n<a href='{self.attachment}'>{self.attachment_caption}</a>"
         return message
 
-    def remove_url_query_params(self, url:str):
+    def remove_url_query_params(self, url: str):
         return urljoin(url, urlparse(url).path)
+
 
 class FacebookScraper:
     def __init__(self, client: Facebook, group_id: str):
