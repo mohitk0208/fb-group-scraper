@@ -12,13 +12,17 @@ FB_BASE_URL = "https://mbasic.facebook.com"
 
 class Facebook:
     def __init__(self, cookies: dict):
-        cookies |= {
-            "noscript": "1",
-        }
         self.default_headers = {
             "Accept": "*/*",
+            "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Accept-Encoding": "gzip,deflate",
+            "Host": "mbasic.facebook.com",
+            "Pragma": "no-cache",
+            "Referer": "https://mbasic.facebook.com/home.php",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
             "User-Agent": "Mozilla/5.0 (Android 12; Mobile; rv:104.0) Gecko/104.0 Firefox/104.0",
         }
         self.session = requests.Session()
