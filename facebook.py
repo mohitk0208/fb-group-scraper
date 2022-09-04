@@ -19,7 +19,7 @@ class Facebook:
             "Accept": "*/*",
             "Connection": "keep-alive",
             "Accept-Encoding": "gzip,deflate",
-            "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) FxQuantum/104.0 AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Mobile Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Android 12; Mobile; rv:104.0) Gecko/104.0 Firefox/104.0",
         }
         self.session = requests.Session()
         self.session.headers.update(self.default_headers)
